@@ -1,0 +1,10 @@
+{
+  "id": "lista-de-tareas-jdc",
+  "name": "LISTA DE TAREAS JDC",
+  "version": "1.0.6",
+  "minAppVersion": "1.5.3",
+  "description": "Remix de Task List Kanban con interfaz en español e inglés, tareas y subtareas anidadas, filtros y listas en columnas.",
+  "author": "ELUNIVERSODEJDC",
+  "authorUrl": "https://github.com/ELUNIVERSODEJDC",
+  "isDesktopOnly": false
+}

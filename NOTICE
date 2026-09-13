@@ -1,0 +1,24 @@
+LISTA DE TAREAS JDC
+
+This repository contains a community remix of Task List Kanban for Obsidian.
+
+Original project:
+Task List Kanban
+https://github.com/ErikaRS/task-list-kanban
+
+Original authorship:
+Chris Kerr
+Erika Rice Scherpelz
+
+Original license:
+MIT License
+Copyright (c) 2024 Chris Kerr
+
+JDC remix:
+Copyright (c) 2026 ELUNIVERSODEJDC
+https://github.com/ELUNIVERSODEJDC
+
+The JDC remix adapts the public Obsidian plugin package with bilingual Spanish
+and English interface support, JDC task board defaults, nested subtask workflow
+presentation, and public package documentation. It does not publish personal
+data, screenshots, or local plugin settings.
