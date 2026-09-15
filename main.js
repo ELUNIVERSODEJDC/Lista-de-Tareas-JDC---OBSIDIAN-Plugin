@@ -19006,8 +19006,22 @@ function NewTaskControls($$anchor, $$props) {
   legacy_pre_effect(() => (get(pendingNewTask), get(newTaskTextAreaEl), tick), () => {
     if (get(pendingNewTask) && get(newTaskTextAreaEl)) {
       void tick().then(() => {
-        var _a5;
-        (_a5 = get(newTaskTextAreaEl)) == null ? void 0 : _a5.focus();
+        const el = get(newTaskTextAreaEl);
+        if (el) {
+          try {
+            const plugin = (typeof app !== "undefined" && app.plugins && app.plugins.plugins["lista-de-tareas-jdc"]);
+            const gSettings = plugin ? plugin.globalSettingsStore.get() : defaultGlobalSettings;
+            if (gSettings && gSettings.taskIndexEnabled !== false && !el.value) {
+              const p = gSettings.taskIndexPrefix || "T-";
+              const n = gSettings.taskIndexNext || 1;
+              const d = gSettings.taskIndexDigits || 3;
+              el.value = jdcFormatTaskIndex(p, n, d) + " — ";
+            }
+          } catch (e) {}
+          el.focus();
+          const len = el.value.length;
+          el.setSelectionRange(len, len);
+        }
         watchViewportWhileEditing();
       });
     }
@@ -22992,6 +23006,56 @@ function View_editor($$anchor, $$props) {
       });
     }
     div_12.after(fontSizeRow);
+    try {
+      const plugin = (typeof app !== "undefined" && app.plugins && app.plugins.plugins["lista-de-tareas-jdc"]);
+      const gSettings = plugin ? plugin.globalSettingsStore.get() : defaultGlobalSettings;
+      const p = gSettings.taskIndexPrefix || "T-";
+      const n = gSettings.taskIndexNext || 1;
+      const d = gSettings.taskIndexDigits || 3;
+      const nextTaskTag = jdcFormatTaskIndex(p, n, d);
+
+      const taskIndexRow = document.createElement("div");
+      taskIndexRow.className = "view-editor-row svelte-1lpntxd jdc-task-index-row";
+      taskIndexRow.innerHTML = `
+        <div class="view-editor-label svelte-1lpntxd"><span>Índice tareas</span></div>
+        <div class="view-editor-controls svelte-1lpntxd" style="display:flex; align-items:center; gap:8px;">
+          <span class="jdc-next-index-badge" style="font-weight:600; color:var(--interactive-accent); font-family:var(--font-monospace); font-size:12px;">${nextTaskTag}</span>
+          <button class="clickable-icon" title="Detectar última tarea de las notas" style="padding:2px 8px; font-size:11px; cursor:pointer; border-radius:4px; border:1px solid var(--background-modifier-border);">Detectar</button>
+        </div>
+      `;
+      const detectBtn = taskIndexRow.querySelector("button");
+      if (detectBtn) {
+        detectBtn.onclick = async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          detectBtn.disabled = true;
+          try {
+            if (typeof app !== "undefined") {
+              const currentPrefix = gSettings.taskIndexPrefix || "T-";
+              const { highest, highestTag } = await jdcDetectHighestTaskInVault(app, currentPrefix);
+              if (highest > 0) {
+                const nextVal = highest + 1;
+                if (plugin && plugin.globalSettingsStore) {
+                  plugin.globalSettingsStore.update((s) => ({ ...s, taskIndexNext: nextVal }));
+                  void plugin.saveGlobalSettings();
+                }
+                const updatedTag = jdcFormatTaskIndex(currentPrefix, nextVal, d);
+                const tagSpan = taskIndexRow.querySelector(".jdc-next-index-badge");
+                if (tagSpan) tagSpan.textContent = updatedTag;
+                if (typeof import_obsidian !== "undefined" && import_obsidian.Notice) {
+                  new import_obsidian.Notice("Detectada última tarea: " + (highestTag || (currentPrefix + highest)) + ". Próxima: " + updatedTag);
+                }
+              }
+            }
+          } finally {
+            detectBtn.disabled = false;
+          }
+        };
+      }
+      fontSizeRow.after(taskIndexRow);
+    } catch (errIndex) {
+      console.error("Error creating task index row in view editor:", errIndex);
+    }
   } catch (err) {
     console.error("Error creating font size row in view editor:", err);
   }
@@ -29081,6 +29145,12 @@ var SettingsModal = class extends import_obsidian14.Modal {
     this.renderScopeSection(scopeSection);
     this.renderDisplaySection(displaySection);
     this.renderStatusMarkersSection(statusMarkersSection);
+    const taskIndexSection = createSection(
+      "task-index-config",
+      "ÍNDICE DE TAREAS (T-###)",
+      "Numeración correlativa automática para evitar tareas duplicadas u olvidos por parte de la IA y del usuario."
+    );
+    this.renderTaskIndexSection(taskIndexSection);
     this.renderAgentsSection(agentsSection);
     if (!this.isEmbedded()) {
       this.renderButtonBar();
@@ -29416,6 +29486,112 @@ var SettingsModal = class extends import_obsidian14.Modal {
         this.settings.ignoredStatusMarkers = value;
       }
     });
+  }
+  renderTaskIndexSection(container) {
+    const plugin = (this.app && this.app.plugins && this.app.plugins.plugins["lista-de-tareas-jdc"]);
+    const getSettings = () => {
+      if (plugin && plugin.globalSettingsStore) {
+        return plugin.globalSettingsStore.get();
+      }
+      return defaultGlobalSettings;
+    };
+    const updateSettings = async (updater) => {
+      if (plugin && plugin.globalSettingsStore) {
+        plugin.globalSettingsStore.update(updater);
+        if (typeof plugin.saveGlobalSettings === "function") {
+          await plugin.saveGlobalSettings();
+        }
+      }
+    };
+
+    new import_obsidian14.Setting(container)
+      .setName("Activar índice automático de tareas")
+      .setDesc("Inserta automáticamente el correlativo (ej. T-015 — ) en el título al crear una nueva tarea.")
+      .addToggle((toggle) => {
+        toggle.setValue(getSettings().taskIndexEnabled !== false)
+          .onChange(async (val) => {
+            await updateSettings((s) => ({ ...s, taskIndexEnabled: val }));
+          });
+      });
+
+    new import_obsidian14.Setting(container)
+      .setName("Prefijo del índice")
+      .setDesc("Prefijo que antecede al número de la tarea (por defecto T-).")
+      .addText((text) => {
+        text.setPlaceholder("T-")
+          .setValue(getSettings().taskIndexPrefix || "T-")
+          .onChange(async (val) => {
+            const prefixVal = val.trim() || "T-";
+            await updateSettings((s) => ({ ...s, taskIndexPrefix: prefixVal }));
+            updateIndexPreview();
+          });
+      });
+
+    let nextTaskInput = null;
+    let indexPreviewEl = null;
+    const updateIndexPreview = () => {
+      if (indexPreviewEl) {
+        const s = getSettings();
+        const p = s.taskIndexPrefix || "T-";
+        const n = s.taskIndexNext || 1;
+        const d = s.taskIndexDigits || 3;
+        indexPreviewEl.setText("Próxima tarea a generar: " + jdcFormatTaskIndex(p, n, d));
+      }
+    };
+
+    new import_obsidian14.Setting(container)
+      .setName("Próximo número (o última tarea creada)")
+      .setDesc("Introduce el próximo número (ej. 15) o la última tarea existente (ej. T-014). El contador aumentará automáticamente al crear tareas.")
+      .addText((text) => {
+        nextTaskInput = text;
+        const curNext = getSettings().taskIndexNext || 1;
+        text.setPlaceholder("1")
+          .setValue(String(curNext))
+          .onChange(async (val) => {
+            const parsed = jdcParseTaskIndexInput(val, getSettings().taskIndexPrefix || "T-");
+            let nextNum = parsed.number;
+            if (val.includes("-")) {
+              nextNum = parsed.number + 1;
+            }
+            await updateSettings((s) => ({
+              ...s,
+              taskIndexNext: Math.max(1, nextNum),
+              ...(parsed.prefix ? { taskIndexPrefix: parsed.prefix } : {})
+            }));
+            updateIndexPreview();
+          });
+      })
+      .addButton((button) => {
+        button.setButtonText("Detectar última tarea de las notas")
+          .setTooltip("Escanea las notas de la bóveda para fijar automáticamente el correlativo según la tarea más alta encontrada.")
+          .onClick(async () => {
+            button.setDisabled(true);
+            try {
+              const currentPrefix = getSettings().taskIndexPrefix || "T-";
+              const { highest, highestTag } = await jdcDetectHighestTaskInVault(this.app, currentPrefix);
+              if (highest > 0) {
+                const nextVal = highest + 1;
+                await updateSettings((s) => ({ ...s, taskIndexNext: nextVal }));
+                if (nextTaskInput) nextTaskInput.setValue(String(nextVal));
+                updateIndexPreview();
+                const nextTag = jdcFormatTaskIndex(currentPrefix, nextVal, getSettings().taskIndexDigits || 3);
+                new import_obsidian14.Notice(
+                  "Detectada última tarea: " + (highestTag || (currentPrefix + highest)) + ". Próxima tarea fijada a: " + nextTag + "."
+                );
+              } else {
+                new import_obsidian14.Notice(
+                  "No se encontraron tareas previas con el prefijo " + currentPrefix + ". Contador fijado a 1."
+                );
+              }
+            } finally {
+              button.setDisabled(false);
+            }
+          });
+      });
+
+    indexPreviewEl = container.createDiv({ cls: "setting-item-description jdc-task-index-preview" });
+    indexPreviewEl.style.cssText = "font-weight: 600; margin-top: -10px; margin-bottom: 16px; color: var(--interactive-accent);";
+    updateIndexPreview();
   }
   renderAgentsSection(container) {
     let targetFolderPath = this.boardFolderPath || "";
@@ -30689,8 +30865,32 @@ function createTaskActions({
       });
     },
     async createTask(file, content, column, additionalTags = [], dateProperties = {}) {
+      let finalContent = content;
+      try {
+        const plugin = (typeof app !== "undefined" && app.plugins && app.plugins.plugins["lista-de-tareas-jdc"]);
+        const gSettings = plugin ? plugin.globalSettingsStore.get() : defaultGlobalSettings;
+        if (gSettings && gSettings.taskIndexEnabled !== false) {
+          const p = gSettings.taskIndexPrefix || "T-";
+          const n = gSettings.taskIndexNext || 1;
+          const d = gSettings.taskIndexDigits || 3;
+          const existing = jdcExtractTaskIndex(content, p);
+          if (!existing) {
+            finalContent = jdcFormatTaskIndex(p, n, d) + " — " + content;
+          }
+          let nextNumber = (gSettings.taskIndexNext || 1) + 1;
+          if (existing && existing.number >= (gSettings.taskIndexNext || 1)) {
+            nextNumber = existing.number + 1;
+          }
+          if (plugin && plugin.globalSettingsStore) {
+            plugin.globalSettingsStore.update((s) => ({ ...s, taskIndexNext: nextNumber }));
+            void plugin.saveGlobalSettings();
+          }
+        }
+      } catch (e) {
+        console.error("Error auto-indexing task", e);
+      }
       const taskLine = buildNewTaskLine({
-        content,
+        content: finalContent,
         column,
         columnDefinitions: getColumnDefinitions(),
         getPlacementTagsForColumn,
@@ -34491,7 +34691,6 @@ var BOARD_DEFAULT_SETTING_KEYS = [
 ];
 
 
-
 // JDC Task Indexing System - ELUNIVERSODEJDC
 function jdcFormatTaskIndex(prefix, num, digits = 3) {
   const p = typeof prefix === "string" ? prefix : "T-";
@@ -34530,15 +34729,13 @@ async function jdcDetectHighestTaskInVault(app, prefix = "T-") {
   const files = app.vault.getMarkdownFiles();
   let highest = 0;
   let highestTag = "";
-  const regex = new RegExp("(?:^|\\s)(?:[A-Za-z0-9_-]+-|T-)?(\\d+)\\b", "g");
 
   for (const file of files) {
     try {
       const c = await app.vault.cachedRead(file);
-      // Search lines with - [ ] or - [x] or tags
-      const lines = c.split('\n');
+      const lines = c.split(/\r?\n/);
       for (const line of lines) {
-        if (!line.includes('- [ ]') && !line.includes('- [x]') && !line.includes('T-')) continue;
+        if (!line.includes("- [ ]") && !line.includes("- [x]") && !line.includes("T-")) continue;
         let m;
         const taskRegex = /\b([A-Za-z0-9_-]+-)?(\d+)\b/g;
         while ((m = taskRegex.exec(line)) !== null) {
@@ -34549,9 +34746,7 @@ async function jdcDetectHighestTaskInVault(app, prefix = "T-") {
           }
         }
       }
-    } catch (e) {
-      // ignore
-    }
+    } catch (e) {}
   }
   return { highest, highestTag };
 }
@@ -34562,7 +34757,6 @@ function jdcNormalizeLanguage(value) {
 }
 var JDC_I18N = {
   "es": {
-    
     "taskIndexHeading": "ÍNDICE DE TAREAS (T-###)",
     "taskIndexDesc": "Numeración correlativa automática para evitar tareas duplicadas u olvidos por parte de la IA y del usuario.",
     "taskIndexEnabled": "Activar índice automático de tareas",
@@ -34671,7 +34865,6 @@ var JDC_I18N = {
   "en": {
     "languageName": "Language",
     "languageDesc": "Interface language for the LISTA DE TAREAS JDC plugin.",
-    
     "taskIndexHeading": "TASK INDEX (T-###)",
     "taskIndexDesc": "Automatic sequential numbering to prevent duplicate tasks or lost counts by AI and users.",
     "taskIndexEnabled": "Enable automatic task indexing",
@@ -35825,7 +36018,11 @@ function installJdcTranslator(plugin) {
 }var defaultGlobalSettings = {
   version: GLOBAL_SETTINGS_VERSION,
   boardDefaults: {},
-  jdcLanguage: "es"
+  jdcLanguage: "es",
+  taskIndexEnabled: true,
+  taskIndexPrefix: "T-",
+  taskIndexNext: 1,
+  taskIndexDigits: 3
 };
 function createGlobalSettingsStore(initial = defaultGlobalSettings) {
   let current = cloneGlobalSettings(initial);
@@ -35894,6 +36091,10 @@ function parseGlobalSettings(data) {
   if (parsedBoardRail) {
     settings.boardRail = parsedBoardRail;
   }
+  settings.taskIndexEnabled = data.taskIndexEnabled !== false;
+  settings.taskIndexPrefix = typeof data.taskIndexPrefix === "string" && data.taskIndexPrefix.trim() !== "" ? data.taskIndexPrefix : "T-";
+  settings.taskIndexNext = typeof data.taskIndexNext === "number" && !isNaN(data.taskIndexNext) && data.taskIndexNext > 0 ? data.taskIndexNext : (parseInt(data.taskIndexNext, 10) || 1);
+  settings.taskIndexDigits = typeof data.taskIndexDigits === "number" && data.taskIndexDigits > 0 ? data.taskIndexDigits : 3;
   return settings;
 }
 function parseBoardRailSettings(raw) {
@@ -36024,7 +36225,11 @@ function cloneGlobalSettings(settings) {
     ...settings.globalViews && settings.globalViews.length > 0 ? { globalViews: cloneJson(settings.globalViews) } : {},
     ...settings.boardList && (((_c2 = (_b3 = settings.boardList.boardPaths) == null ? void 0 : _b3.length) != null ? _c2 : 0) > 0 || ((_e = (_d = settings.boardList.unpinnedPaths) == null ? void 0 : _d.length) != null ? _e : 0) > 0) ? { boardList: cloneJson(settings.boardList) } : {},
     ...settings.lastOpenedByPath && Object.keys(settings.lastOpenedByPath).length > 0 ? { lastOpenedByPath: cloneJson(settings.lastOpenedByPath) } : {},
-    ...settings.boardRail && (settings.boardRail.width !== void 0 || settings.boardRail.dock !== void 0) ? { boardRail: cloneJson(settings.boardRail) } : {}
+    ...settings.boardRail && (settings.boardRail.width !== void 0 || settings.boardRail.dock !== void 0) ? { boardRail: cloneJson(settings.boardRail) } : {},
+    taskIndexEnabled: settings.taskIndexEnabled !== false,
+    taskIndexPrefix: typeof settings.taskIndexPrefix === "string" ? settings.taskIndexPrefix : "T-",
+    taskIndexNext: typeof settings.taskIndexNext === "number" && !isNaN(settings.taskIndexNext) ? settings.taskIndexNext : 1,
+    taskIndexDigits: typeof settings.taskIndexDigits === "number" ? settings.taskIndexDigits : 3
   };
 }
 function cloneJson(value) {
@@ -36790,6 +36995,12 @@ var CreateCardModal = class extends import_obsidian22.Modal {
     this.selectedBoardIndex = 0;
     this.selectedFilePath = "";
     this.draftContent = "";
+    if (this.globalSettings && this.globalSettings.taskIndexEnabled !== false) {
+      const p = this.globalSettings.taskIndexPrefix || "T-";
+      const n = this.globalSettings.taskIndexNext || 1;
+      const d = this.globalSettings.taskIndexDigits || 3;
+      this.draftContent = jdcFormatTaskIndex(p, n, d) + " — ";
+    }
     this.textAreaEl = null;
     this.submitButtonEl = null;
     const preferredIndex = preferredBoardPath ? this.boardOptions.findIndex((option) => option.entry.path === preferredBoardPath) : -1;
@@ -36803,8 +37014,11 @@ var CreateCardModal = class extends import_obsidian22.Modal {
     this.contentEl.addClass("lista-de-tareas-jdc-create-card-modal");
     this.render();
     window.requestAnimationFrame(() => {
-      var _a5;
-      return (_a5 = this.textAreaEl) == null ? void 0 : _a5.focus();
+      if (this.textAreaEl) {
+        this.textAreaEl.focus();
+        const len = this.textAreaEl.value.length;
+        this.textAreaEl.setSelectionRange(len, len);
+      }
     });
   }
   onClose() {
@@ -36957,6 +37171,19 @@ var CreateCardModal = class extends import_obsidian22.Modal {
         );
       }
       new import_obsidian22.Notice(jdcT(this.globalSettings, "cardAdded"));
+      if (this.globalSettings && this.globalSettings.taskIndexEnabled !== false) {
+        const p = this.globalSettings.taskIndexPrefix || "T-";
+        const existing = jdcExtractTaskIndex(content, p);
+        let nextNumber = (this.globalSettings.taskIndexNext || 1) + 1;
+        if (existing && existing.number >= (this.globalSettings.taskIndexNext || 1)) {
+          nextNumber = existing.number + 1;
+        }
+        const plugin = this.app.plugins.plugins["lista-de-tareas-jdc"];
+        if (plugin && plugin.globalSettingsStore) {
+          plugin.globalSettingsStore.update((s) => ({ ...s, taskIndexNext: nextNumber }));
+          void plugin.saveGlobalSettings();
+        }
+      }
       this.close();
     } catch (error) {
       console.error("Failed to add card from command", error);
