@@ -34717,33 +34717,35 @@ function jdcParseTaskIndexInput(input, defaultPrefix = "T-") {
 
 function jdcExtractTaskIndex(text, prefix = "T-") {
   if (!text) return null;
-  const genericMatch = text.match(/(?:^|\s)([A-Za-z0-9_-]+-)?(\d+)\b/);
-  if (genericMatch && genericMatch[2]) {
-    const p = genericMatch[1] || prefix;
-    return { prefix: p, number: parseInt(genericMatch[2], 10), full: genericMatch[0].trim() };
+  const clean = (typeof prefix === "string" ? prefix : "T-").trim();
+  const basePrefix = clean.endsWith("-") ? clean.slice(0, -1) : clean;
+  const escaped = basePrefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = text.match(new RegExp("(?:^|\\s|#)" + escaped + "[-_](\\d+)\\b", "i"));
+  if (match && match[1]) {
+    return { prefix: clean.endsWith("-") ? clean : clean + "-", number: parseInt(match[1], 10), full: match[0].trim().replace(/^#/, "") };
   }
   return null;
 }
 
 async function jdcDetectHighestTaskInVault(app, prefix = "T-") {
   const files = app.vault.getMarkdownFiles();
+  const clean = (typeof prefix === "string" ? prefix : "T-").trim();
+  const basePrefix = clean.endsWith("-") ? clean.slice(0, -1) : clean;
+  const escaped = basePrefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp("(?:\\b|#)" + escaped + "[-_](\\d+)\\b", "gi");
   let highest = 0;
   let highestTag = "";
 
   for (const file of files) {
     try {
       const c = await app.vault.cachedRead(file);
-      const lines = c.split(/\r?\n/);
-      for (const line of lines) {
-        if (!line.includes("- [ ]") && !line.includes("- [x]") && !line.includes("T-")) continue;
-        let m;
-        const taskRegex = /\b([A-Za-z0-9_-]+-)?(\d+)\b/g;
-        while ((m = taskRegex.exec(line)) !== null) {
-          const num = parseInt(m[2], 10);
-          if (num > highest && num < 100000) {
-            highest = num;
-            highestTag = m[0];
-          }
+      if (!c.includes(basePrefix)) continue;
+      let m;
+      while ((m = regex.exec(c)) !== null) {
+        const num = parseInt(m[1], 10);
+        if (num > highest && num < 100000) {
+          highest = num;
+          highestTag = m[0].replace(/^#/, "");
         }
       }
     } catch (e) {}
