@@ -11,7 +11,8 @@ Este repositorio publica únicamente el paquete limpio del plugin. No incluye da
 - **Interfaz bilingüe completa**: Selector `Language` con opciones exactas `Español` y `English`.
 - **Soporte Multi-Agente de IA y Generador de `AGENTS.md`**: Genera normas universales de trabajo autónomo (jerarquía CEO/Dubby, compuerta de rol, comando `/objetivo`, ciclo de vida de tareas `T-###`, agentes persistentes y validación empírica sin inventar datos).
 - **Ruta Libre y Selector Nativo de Carpetas**: Generación de `AGENTS.md` en cualquier directorio de tu ordenador (con botón nativo `Examinar PC...` en Windows) o dentro de la bóveda (`Examinar Bóveda...`).
-- **Control de Tamaño de Texto en Vista**: Deslizador interactivo en el menú *Vista* para regular el tamaño de fuente (10px - 20px) en tiempo real con persistencia en la configuración del plugin.
+- **Índice Automático de Tareas (`T-###`)**: Asignación correlativa automática al crear tareas (en modal y en columnas Kanban). Prefijo configurable, número base/inicio ajustable, botón interactivo para **detectar la última tarea existente en las notas** y autoincremento automático que previene duplicados o desajustes por parte de la IA o el usuario.
+- **Control de Tamaño de Texto y Escalado Proporcional de Etiquetas**: Deslizador interactivo en el menú *Vista* para regular el tamaño de fuente (10px - 20px) en tiempo real con persistencia. Las etiquetas (`#TAG`, `#PRIORIDAD_ALTA`) escalan proporcionalmente de forma compacta.
 - **Tablero Optimizado**: Vista despejada que arranca limpia desde el borde izquierdo sin superposiciones ni columnas fantasma.
 - **Tareas Markdown nativas**: Las tareas residen directamente en los archivos Markdown del usuario, sin base de datos externa ni formatos propietarios.
 - **Subtareas anidadas visibles**: Las subtareas con casillas de verificación `- [ ]` y `- [x]` se muestran de forma jerárquica dentro de la tarjeta principal.
@@ -154,7 +155,8 @@ This repository publishes only the clean plugin package. It does not include per
 - **Full Bilingual Interface**: `Language` selector supporting both `Español` and `English`.
 - **AI Multi-Agent Support & Universal `AGENTS.md` Generator**: Generates universal autonomous operating rules (CEO/Dubby hierarchy, Role Gate, `/objetivo` command, `T-###` task lifecycle, persistent threads, and strict empirical validation).
 - **Free Destination Path & Native Folder Picker**: Generate `AGENTS.md` in any PC directory (`Browse PC...` native Windows dialog) or within the vault (`Browse Vault...`).
-- **Interactive Font Size Slider**: Dynamically adjust board font size (10px - 20px) from the *View* menu with live scaling and persistence.
+- **Automatic Task Indexing (`T-###`)**: Automatic sequential task ID prefixing when creating cards (both in modal and inline column inputs). Fully configurable prefix and start counter, with a one-click button to **detect the highest existing task in notes** and automatic counter incrementing to avoid AI or user collision.
+- **Font Size Controls & Proportional Tag Scaling**: Interactive slider in the *View* menu (10px - 20px) with live scaling and persistence. Tags (`#TAG`, `#PRIORIDAD_ALTA`) automatically scale down compactly and proportionally.
 - **Clean Board Layout**: Zero ghost columns or floating overlays, starting flush from the left margin.
 - **Native Markdown Tasks**: Tasks live directly within the user's Markdown notes.
 - **Nested Subtasks**: Checkboxes `- [ ]` and `- [x]` rendered hierarchically inside parent task cards.

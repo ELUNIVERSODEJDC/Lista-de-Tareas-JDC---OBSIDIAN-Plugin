@@ -1,9 +1,9 @@
 {
   "id": "lista-de-tareas-jdc",
   "name": "LISTA DE TAREAS JDC",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "minAppVersion": "1.5.3",
-  "description": "Remix de Task List Kanban con interfaz bilingüe, subtareas anidadas, soporte multi-agente IA y generador universal de AGENTS.md.",
+  "description": "Remix de Task List Kanban con interfaz bilingüe, subtareas anidadas, índice automático de tareas (T-###), soporte multi-agente IA y generador universal de AGENTS.md.",
   "author": "ELUNIVERSODEJDC",
   "authorUrl": "https://github.com/ELUNIVERSODEJDC",
   "isDesktopOnly": false

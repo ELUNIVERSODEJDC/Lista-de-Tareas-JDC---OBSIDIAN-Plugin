@@ -34491,12 +34491,91 @@ var BOARD_DEFAULT_SETTING_KEYS = [
 ];
 
 
+
+// JDC Task Indexing System - ELUNIVERSODEJDC
+function jdcFormatTaskIndex(prefix, num, digits = 3) {
+  const p = typeof prefix === "string" ? prefix : "T-";
+  const n = typeof num === "number" && !isNaN(num) && num > 0 ? num : 1;
+  const d = typeof digits === "number" && digits > 0 ? digits : 3;
+  return p + String(n).padStart(d, "0");
+}
+
+function jdcParseTaskIndexInput(input, defaultPrefix = "T-") {
+  if (!input) return { prefix: defaultPrefix, number: 1 };
+  const trimmed = String(input).trim();
+  const match = trimmed.match(/^([A-Za-z0-9_-]+-)?(\d+)/);
+  if (match) {
+    const prefix = match[1] || defaultPrefix;
+    const number = parseInt(match[2], 10) || 1;
+    return { prefix, number };
+  }
+  const numOnly = parseInt(trimmed, 10);
+  if (!isNaN(numOnly)) {
+    return { prefix: defaultPrefix, number: numOnly };
+  }
+  return { prefix: trimmed.endsWith("-") ? trimmed : trimmed + "-", number: 1 };
+}
+
+function jdcExtractTaskIndex(text, prefix = "T-") {
+  if (!text) return null;
+  const genericMatch = text.match(/(?:^|\s)([A-Za-z0-9_-]+-)?(\d+)\b/);
+  if (genericMatch && genericMatch[2]) {
+    const p = genericMatch[1] || prefix;
+    return { prefix: p, number: parseInt(genericMatch[2], 10), full: genericMatch[0].trim() };
+  }
+  return null;
+}
+
+async function jdcDetectHighestTaskInVault(app, prefix = "T-") {
+  const files = app.vault.getMarkdownFiles();
+  let highest = 0;
+  let highestTag = "";
+  const regex = new RegExp("(?:^|\\s)(?:[A-Za-z0-9_-]+-|T-)?(\\d+)\\b", "g");
+
+  for (const file of files) {
+    try {
+      const c = await app.vault.cachedRead(file);
+      // Search lines with - [ ] or - [x] or tags
+      const lines = c.split('\n');
+      for (const line of lines) {
+        if (!line.includes('- [ ]') && !line.includes('- [x]') && !line.includes('T-')) continue;
+        let m;
+        const taskRegex = /\b([A-Za-z0-9_-]+-)?(\d+)\b/g;
+        while ((m = taskRegex.exec(line)) !== null) {
+          const num = parseInt(m[2], 10);
+          if (num > highest && num < 100000) {
+            highest = num;
+            highestTag = m[0];
+          }
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+  return { highest, highestTag };
+}
+
 // JDC i18n layer - ELUNIVERSODEJDC
 function jdcNormalizeLanguage(value) {
   return value === "en" ? "en" : "es";
 }
 var JDC_I18N = {
   "es": {
+    
+    "taskIndexHeading": "ÍNDICE DE TAREAS (T-###)",
+    "taskIndexDesc": "Numeración correlativa automática para evitar tareas duplicadas u olvidos por parte de la IA y del usuario.",
+    "taskIndexEnabled": "Activar índice automático de tareas",
+    "taskIndexEnabledDesc": "Inserta automáticamente el correlativo (ej. T-015 — ) en el título al crear una nueva tarea.",
+    "taskIndexPrefix": "Prefijo del índice",
+    "taskIndexPrefixDesc": "Prefijo que antecede al número de la tarea (por defecto T-).",
+    "taskIndexNext": "Próximo número (o última tarea creada)",
+    "taskIndexNextDesc": "Introduce el próximo número (ej. 15) o la última tarea existente (ej. T-014). El contador aumentará automáticamente al crear tareas.",
+    "taskIndexDetectBtn": "Detectar última tarea de las notas",
+    "taskIndexDetectTooltip": "Escanea las notas de la bóveda para fijar automáticamente el correlativo según la tarea más alta encontrada.",
+    "taskIndexDetectedNotice": "Detectada última tarea: {last}. Próxima tarea fijada a: {next}.",
+    "taskIndexNoneDetectedNotice": "No se encontraron tareas previas con el prefijo indicado. Contador fijado a 1.",
+    "taskIndexPreview": "Próxima tarea a generar: ",
     "languageName": "Language",
     "languageDesc": "Idioma de la interfaz del plugin LISTA DE TAREAS JDC.",
     "boardRailPosition": "Posición del panel de listas",
@@ -34592,6 +34671,20 @@ var JDC_I18N = {
   "en": {
     "languageName": "Language",
     "languageDesc": "Interface language for the LISTA DE TAREAS JDC plugin.",
+    
+    "taskIndexHeading": "TASK INDEX (T-###)",
+    "taskIndexDesc": "Automatic sequential numbering to prevent duplicate tasks or lost counts by AI and users.",
+    "taskIndexEnabled": "Enable automatic task indexing",
+    "taskIndexEnabledDesc": "Automatically inserts sequential index (e.g. T-015 — ) into the title when creating a new task.",
+    "taskIndexPrefix": "Index prefix",
+    "taskIndexPrefixDesc": "Prefix preceding the task number (default: T-).",
+    "taskIndexNext": "Next number (or last task created)",
+    "taskIndexNextDesc": "Enter next number (e.g. 15) or last existing task (e.g. T-014). The counter will auto-increment with each new task.",
+    "taskIndexDetectBtn": "Detect last task from notes",
+    "taskIndexDetectTooltip": "Scans vault notes to automatically set the next counter based on the highest task found.",
+    "taskIndexDetectedNotice": "Detected last task: {last}. Next task set to: {next}.",
+    "taskIndexNoneDetectedNotice": "No previous tasks found with this prefix. Counter set to 1.",
+    "taskIndexPreview": "Next task to generate: ",
     "boardRailPosition": "Board rail position",
     "boardRailDesc": "Where the board rail docks in vaults with more than one board. The rail lists every shown board for one-click switching.",
     "leftSide": "Left side",

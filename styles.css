@@ -1560,10 +1560,19 @@ If your plugin does not need CSS, delete this file.
   line-height: 1.35 !important;
 }
 
+.lista-de-tareas-jdc-view a.tag,
+.lista-de-tareas-jdc-view .tag,
+.lista-de-tareas-jdc-view .cm-hashtag,
 .lista-de-tareas-jdc-view .task-tags span,
-.lista-de-tareas-jdc-view [class*="task-tags"] span {
-  font-size: calc(var(--jdc-task-font-size, 13px) - 2.5px) !important;
-  padding: 1px 4px !important;
+.lista-de-tareas-jdc-view .task-tags a,
+.lista-de-tareas-jdc-view [class*="task-tags"] span,
+.lista-de-tareas-jdc-view [class*="task-tags"] a {
+  font-size: max(9px, calc(var(--jdc-task-font-size, 13px) - 2.5px)) !important;
+  line-height: 1.2 !important;
+  padding: 1px 6px !important;
+  border-radius: 999px !important;
+  display: inline-block !important;
+  vertical-align: middle !important;
 }
 
 .lista-de-tareas-jdc-view .task-progress-wrapper,
