@@ -7,12 +7,15 @@ Este repositorio publica únicamente el paquete limpio del plugin. No incluye da
 ## Funciones Principales
 
 - Interfaz bilingüe con selector `Language` y opciones exactas `Español` y `English`.
+- **Soporte Multi-Agente de IA y Generador de `AGENTS.md`**: Genera normas universales de trabajo autónomo (jerarquía CEO/Dubby, compuerta de rol, comando `/objetivo`, ciclo de vida de tareas `T-###` y validación empírica sin inventar datos).
+- **Ruta Libre y Selector Nativo**: Generación de `AGENTS.md` en cualquier directorio de tu ordenador (con botón nativo `Examinar PC...`) o dentro de la bóveda (`Examinar Bóveda...`).
+- **Control de Tamaño de Texto en Vista**: Deslizador interactivo en el menú *Vista* para regular el tamaño de fuente (10px - 20px) en tiempo real con persistencia.
+- **Tablero Optimizado**: Vista despejada que arranca limpia desde el borde izquierdo sin superposiciones ni columnas fantasma.
 - Tareas Markdown dentro de las notas del usuario, sin base de datos externa.
 - Subtareas anidadas visibles dentro de la tarea principal.
 - Panel de listas para abrir y gestionar vistas de tareas.
 - Filtros, contadores, menús, modales y ajustes adaptados al remix JDC.
-- Columnas lado a lado para flujos de revisión.
-- Columnas por defecto para `PENDIENTES`, `PARA AUDITAR`, `NO FUNCIONA DESCARTADO` y `COMPLETADO Y VALIDADO`.
+- Columnas lado a lado para flujos de revisión (`PENDIENTES`, `PARA AUDITAR`, `NO FUNCIONA DESCARTADO`, `COMPLETADO Y VALIDADO`).
 - `Uncategorized` oculto por defecto para una lectura más limpia.
 
 ## Instalación Manual
@@ -68,12 +71,15 @@ This repository publishes only the clean plugin package. It does not include per
 ### Main Features
 
 - Bilingual interface with a `Language` selector and exact options `Español` and `English`.
+- **AI Multi-Agent Support & Universal `AGENTS.md` Generator**: Generates universal autonomous workflow rules (CEO/Dubby hierarchy, role gate, `/objetivo` command, `T-###` task lifecycles, and strict empirical validation).
+- **Free Destination Path & Native Folder Picker**: Generate `AGENTS.md` in any PC directory (`Browse PC...` native Windows dialog) or within the vault (`Browse Vault...`).
+- **Interactive Font Size Slider**: Dynamically adjust board font size (10px - 20px) from the *View* menu with live scaling and persistence.
+- **Clean Board Layout**: Zero ghost columns or floating overlays, starting flush from the left margin.
 - Markdown tasks remain inside the user's notes.
 - Nested subtasks shown inside their parent task.
 - List panel for opening and managing task views.
 - Filters, counters, menus, modals, and settings adapted for the JDC remix.
-- Side-by-side columns for review and tracking.
-- Default columns for `PENDIENTES`, `PARA AUDITAR`, `NO FUNCIONA DESCARTADO`, and `COMPLETADO Y VALIDADO`.
+- Side-by-side columns for review and tracking (`PENDIENTES`, `PARA AUDITAR`, `NO FUNCIONA DESCARTADO`, and `COMPLETADO Y VALIDADO`).
 - `Uncategorized` hidden by default for a cleaner board.
 
 ### Manual Installation

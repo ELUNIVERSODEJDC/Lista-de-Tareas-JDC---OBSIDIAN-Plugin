@@ -1486,3 +1486,112 @@ If your plugin does not need CSS, delete this file.
   display: flex !important;
 }
 /* JDC_NO_COLLAPSED_COLUMNS_END */
+
+/* JDC_COMPACT_TYPOGRAPHY_START */
+.lista-de-tareas-jdc-view {
+  --font-text-size: 13px !important;
+  font-size: 13px !important;
+}
+
+.lista-de-tareas-jdc-view .matrix-horizontal:not(.show-swimlane-labels) {
+  --matrix-corner-width: 0px !important;
+  --sticky-left-offset: 0px !important;
+}
+
+.lista-de-tareas-jdc-view .matrix-horizontal:not(.show-swimlane-labels) .matrix-corner,
+.lista-de-tareas-jdc-view .matrix-horizontal:not(.show-swimlane-labels) .swimlane-header-cell,
+.lista-de-tareas-jdc-view .matrix-horizontal:not(.show-swimlane-labels) [class*="swimlane-header"],
+.lista-de-tareas-jdc-view .matrix-corner,
+.lista-de-tareas-jdc-view .matrix-task-count {
+  display: none !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  pointer-events: none !important;
+}
+
+:root,
+.lista-de-tareas-jdc-view {
+  --jdc-task-font-size: 13px;
+}
+
+.lista-de-tareas-jdc-view .main,
+.lista-de-tareas-jdc-view [class*="main"] {
+  font-size: var(--jdc-task-font-size, 13px) !important;
+}
+
+.lista-de-tareas-jdc-view .column-header .column-title-group h2,
+.lista-de-tareas-jdc-view .column-header .column-title-group h3,
+.lista-de-tareas-jdc-view .column-header [class*="column-title"] h2,
+.lista-de-tareas-jdc-view .column-header [class*="column-title"] h3 {
+  font-size: calc(var(--jdc-task-font-size, 13px) + 0.5px) !important;
+  font-weight: 600 !important;
+  line-height: 1.2 !important;
+}
+
+.lista-de-tareas-jdc-view .column-subhead,
+.lista-de-tareas-jdc-view [class*="column-subhead"] {
+  font-size: calc(var(--jdc-task-font-size, 13px) - 2px) !important;
+}
+
+.lista-de-tareas-jdc-view .column-subhead *,
+.lista-de-tareas-jdc-view [class*="column-subhead"] * {
+  font-size: calc(var(--jdc-task-font-size, 13px) - 2px) !important;
+}
+
+.lista-de-tareas-jdc-view .task {
+  font-size: var(--jdc-task-font-size, 13px) !important;
+  line-height: 1.35 !important;
+  --task-content-line-height: 1.35rem !important;
+  padding-top: 4px !important;
+  padding-bottom: 4px !important;
+}
+
+.lista-de-tareas-jdc-view .task-row-content,
+.lista-de-tareas-jdc-view .task-row-content *,
+.lista-de-tareas-jdc-view .content-preview,
+.lista-de-tareas-jdc-view .content-preview *,
+.lista-de-tareas-jdc-view .task-line-content,
+.lista-de-tareas-jdc-view .task-line-content * {
+  font-size: var(--jdc-task-font-size, 13px) !important;
+  line-height: 1.35 !important;
+}
+
+.lista-de-tareas-jdc-view .task-tags span,
+.lista-de-tareas-jdc-view [class*="task-tags"] span {
+  font-size: calc(var(--jdc-task-font-size, 13px) - 2.5px) !important;
+  padding: 1px 4px !important;
+}
+
+.lista-de-tareas-jdc-view .task-progress-wrapper,
+.lista-de-tareas-jdc-view [class*="task-progress-wrapper"] {
+  margin-top: 2px !important;
+  margin-bottom: 2px !important;
+}
+
+.lista-de-tareas-jdc-view .task-progress-text,
+.lista-de-tareas-jdc-view [class*="task-progress-text"] {
+  font-size: calc(var(--jdc-task-font-size, 13px) - 2px) !important;
+}
+
+.lista-de-tareas-jdc-view .task-footer,
+.lista-de-tareas-jdc-view .task-footer *,
+.lista-de-tareas-jdc-view [class*="task-footer"],
+.lista-de-tareas-jdc-view [class*="task-footer"] * {
+  font-size: calc(var(--jdc-task-font-size, 13px) - 2px) !important;
+}
+
+.lista-de-tareas-jdc-view .subtask-collapse-btn,
+.lista-de-tareas-jdc-view [class*="subtask-collapse-btn"] {
+  font-size: calc(var(--jdc-task-font-size, 13px) - 4px) !important;
+}
+
+.lista-de-tareas-jdc-view .add-subtask-btn,
+.lista-de-tareas-jdc-view [class*="add-subtask-btn"] {
+  font-size: calc(var(--jdc-task-font-size, 13px) - 2px) !important;
+}
+/* JDC_COMPACT_TYPOGRAPHY_END */
+

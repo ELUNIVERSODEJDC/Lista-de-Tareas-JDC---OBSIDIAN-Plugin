@@ -16118,7 +16118,7 @@ function ColumnHeader($$anchor, $$props) {
       event("click", button, () => {
         if (get(isSelectMode)) toggleSelectionMode(column());
       });
-      event("click", button_1, () => {
+            event("click", button_1, () => {
         if (!get(isSelectMode)) toggleSelectionMode(column());
       });
       append($$anchor2, div_4);
@@ -16307,6 +16307,51 @@ function deriveDropPlan({
 // src/ui/dnd/store.ts
 var isDraggingStore = writable(null);
 var subtaskDraggingStore = writable(null);
+
+// Keep the per-task subtask disclosure state outside Task2 so a task refresh
+// caused by a checkbox update does not reset a manually collapsed tree.
+var SUBTASK_COLLAPSE_STORAGE_KEY = "lista-de-tareas-jdc.subtasks-collapsed";
+var subtaskCollapseState = /* @__PURE__ */ new Map();
+function loadSubtaskCollapseState() {
+  try {
+    if (typeof localStorage === "undefined") return;
+    const raw = localStorage.getItem(SUBTASK_COLLAPSE_STORAGE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return;
+    for (const [taskId, collapsed] of Object.entries(parsed)) {
+      if (typeof taskId === "string" && typeof collapsed === "boolean") {
+        subtaskCollapseState.set(taskId, collapsed);
+      }
+    }
+  } catch (_error) {
+    // Storage is a convenience; a blocked or malformed store must not break the board.
+  }
+}
+function persistSubtaskCollapseState() {
+  try {
+    if (typeof localStorage === "undefined") return;
+    localStorage.setItem(SUBTASK_COLLAPSE_STORAGE_KEY, JSON.stringify(Object.fromEntries(subtaskCollapseState)));
+  } catch (_error) {
+    // Storage is a convenience; the in-memory state still preserves live updates.
+  }
+}
+function getSubtaskCollapseKey(task) {
+  if (!task || typeof task.path !== "string") return "";
+  const structuralId = typeof task.blockLink === "string" && task.blockLink ? `block:${task.blockLink}` : `row:${task.rowIndex}`;
+  return `${task.path}::${structuralId}`;
+}
+function getSubtaskCollapsed(taskId) {
+  if (typeof taskId !== "string") return true;
+  const stored = subtaskCollapseState.get(taskId);
+  return stored === undefined ? true : stored === true;
+}
+function setSubtaskCollapsed(taskId, collapsed) {
+  if (typeof taskId !== "string") return;
+  subtaskCollapseState.set(taskId, collapsed);
+  persistSubtaskCollapseState();
+}
+loadSubtaskCollapseState();
 
 // src/ui/components/TaskLineRow.svelte
 var root5 = from_html(`<div class="task-line-actions svelte-1y3uj64"><!></div>`);
@@ -17763,9 +17808,24 @@ function Task2($$anchor, $$props) {
   let isEditing = mutable_source(false);
   let isMobileEditing = mutable_source(false);
   let isDragging = mutable_source(false);
-  let isSubtasksCollapsed = mutable_source(false);
+  let subtaskCollapseKey = mutable_source(getSubtaskCollapseKey(task()));
+  let isSubtasksCollapsed = mutable_source(getSubtaskCollapsed(get(subtaskCollapseKey)));
+  function syncSubtaskCollapseState() {
+    const nextKey = getSubtaskCollapseKey(task());
+    if (nextKey === get(subtaskCollapseKey)) return;
+    set(subtaskCollapseKey, nextKey);
+    set(isSubtasksCollapsed, getSubtaskCollapsed(nextKey));
+  }
   function toggleSubtasksCollapse() {
-    set(isSubtasksCollapsed, !get(isSubtasksCollapsed));
+    const nextCollapsed = !get(isSubtasksCollapsed);
+    set(isSubtasksCollapsed, nextCollapsed);
+    setSubtaskCollapsed(get(subtaskCollapseKey), nextCollapsed);
+  }
+  function toggleDonePreservingSubtaskState() {
+    // Checkbox updates can replace the Task object and remount the card.
+    // Snapshot the disclosure choice before that asynchronous refresh starts.
+    setSubtaskCollapsed(get(subtaskCollapseKey), get(isSubtasksCollapsed));
+    return taskActions().toggleDone(task().id);
   }
   function handleDragStart(e) {
     if (!canStartTaskDrag({
@@ -17936,7 +17996,7 @@ function Task2($$anchor, $$props) {
     function handlePrimaryCheckboxClick(e) {
       e.preventDefault();
       e.stopPropagation();
-      void taskActions().toggleDone(task().id);
+      void toggleDonePreservingSubtaskState();
     }
     get(previewContainerEl).querySelectorAll("a:not(.internal-link)").forEach((a) => {
       const anchor = a;
@@ -17987,6 +18047,9 @@ function Task2($$anchor, $$props) {
     e.currentTarget.style.height = `0px`;
     e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`;
   }
+  legacy_pre_effect(() => deep_read_state(task()), () => {
+    syncSubtaskCollapseState();
+  });
   legacy_pre_effect(() => deep_read_state(task()), () => {
     set(displayStatusIsCustom, task().displayStatus !== " ");
   });
@@ -18373,11 +18436,16 @@ function Task2($$anchor, $$props) {
               });
               set_attribute2(button_1, "aria-checked", (deep_read_state(task()), untrack(() => task().done)));
             });
-            event("click", button_1, () => void taskActions().toggleDone(task().id));
+            event("click", button_1, (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              void toggleDonePreservingSubtaskState();
+            });
             event("keydown", button_1, (e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
-                void taskActions().toggleDone(task().id);
+                e.stopPropagation();
+                void toggleDonePreservingSubtaskState();
               }
             });
             append($$anchor3, button_1);
@@ -19599,7 +19667,7 @@ function BoardCell($$anchor, $$props) {
     }
   });
   var div_1 = sibling(node, 2);
-  each(div_1, 5, () => get(tasks), (task) => task.id, ($$anchor2, task) => {
+  each(div_1, 5, () => get(tasks), (task) => getSubtaskCollapseKey(task), ($$anchor2, task) => {
     var div_2 = root13();
     let classes_1;
     var node_1 = child(div_2);
@@ -20428,7 +20496,7 @@ function Board_matrix_horizontal($$anchor, $$props) {
     () => (get(showSwimlaneLabels), deep_read_state(matrix()), deep_read_state(columnWidth())),
     () => {
       set(gridTemplateColumns, [
-        get(showSwimlaneLabels) ? "max-content" : "var(--matrix-corner-width)",
+        get(showSwimlaneLabels) ? "max-content" : "0px",
         ...matrix().primaryAxis.map((b) => b.collapsed ? "48px" : columnWidth())
       ].join(" "));
     }
@@ -20834,6 +20902,7 @@ function Board_matrix_horizontal($$anchor, $$props) {
       );
       template_effect(() => {
         set_attribute2(div_3, "aria-hidden", !get(showSwimlaneLabels));
+        div_3.style.display = get(showSwimlaneLabels) ? "" : "none";
         styles_2 = set_style(div_3, "", styles_2, { "grid-column": "1", "grid-row": get(sIndex) + 2 });
       });
       append($$anchor2, fragment);
@@ -20847,7 +20916,7 @@ function Board_matrix_horizontal($$anchor, $$props) {
       "grid-template-columns": get(gridTemplateColumns),
       "grid-template-rows": get(gridTemplateRows),
       "--header-height": `${(_a5 = get(headerHeight)) != null ? _a5 : ""}px`,
-      "--sticky-left-offset": "56px"
+      "--sticky-left-offset": get(showSwimlaneLabels) ? "56px" : "0px"
     });
   });
   bind_element_size(div_1, "clientHeight", ($$value) => set(headerHeight, $$value));
@@ -22896,6 +22965,36 @@ function View_editor($$anchor, $$props) {
   event("keydown", input_3, onSaveViewNameKeydown);
   event("click", button_4, saveView);
   event("click", button_5, () => onToggleSavedViewList()(!savedViewListExpanded()));
+  try {
+    const currentFsize = localStorage.getItem("jdc-task-font-size") || "13";
+    const fontSizeRow = document.createElement("div");
+    fontSizeRow.className = "view-editor-row svelte-1lpntxd jdc-font-size-row";
+    fontSizeRow.innerHTML = `
+      <div class="view-editor-label svelte-1lpntxd"><span>Tamaño de texto</span></div>
+      <div class="view-editor-controls svelte-1lpntxd">
+        <div class="card-width-control svelte-1lpntxd">
+          <input type="range" min="10" max="20" step="1" aria-label="Tamaño de texto" value="${currentFsize}" class="svelte-1lpntxd jdc-font-slider" />
+          <output class="svelte-1lpntxd jdc-font-output">${currentFsize}px</output>
+        </div>
+      </div>
+    `;
+    const fontSlider = fontSizeRow.querySelector(".jdc-font-slider");
+    const fontOutput = fontSizeRow.querySelector(".jdc-font-output");
+    if (fontSlider && fontOutput) {
+      fontSlider.addEventListener("input", (e) => {
+        const val = e.target.value;
+        fontOutput.textContent = `${val}px`;
+        localStorage.setItem("jdc-task-font-size", val);
+        document.querySelectorAll(".lista-de-tareas-jdc-view, .main.svelte-16qe0yp, .columns.svelte-16qe0yp, .board-body").forEach((el) => {
+          el.style.setProperty("--jdc-task-font-size", `${val}px`);
+        });
+        document.documentElement.style.setProperty("--jdc-task-font-size", `${val}px`);
+      });
+    }
+    div_12.after(fontSizeRow);
+  } catch (err) {
+    console.error("Error creating font size row in view editor:", err);
+  }
   append($$anchor, section);
   return pop($$exports);
 }
@@ -25627,7 +25726,7 @@ var root_126 = from_html(`<button class="filter-bar-clear svelte-16qe0yp" aria-l
 var root_217 = from_html(`<div class="main svelte-16qe0yp"><div><!> <div class="board-body svelte-16qe0yp"><div><div class="view-control svelte-16qe0yp"><button type="button"><!> <span>View</span> <span class="view-editor-chevron svelte-16qe0yp"><!></span></button> <!></div> <div class="filter-bar-container svelte-16qe0yp"><div class="filter-bar svelte-16qe0yp"><!> <input type="text" class="filter-bar-input svelte-16qe0yp" aria-label="Filter tasks (press Enter to apply)" spellcheck="false"/> <!> <button class="filter-bar-expand svelte-16qe0yp"><!></button></div> <!> <!></div> <div class="settings-control svelte-16qe0yp"><!></div></div> <!> <!> <div class="board-main svelte-16qe0yp"><div><!></div></div> <!></div></div></div>`);
 var $$css25 = {
   hash: "svelte-16qe0yp",
-  code: ".main.svelte-16qe0yp {--view-toolbar-control-height: 42px;height:100%;display:flex;flex-direction:column;font-size:var(--font-text-size);}.main.svelte-16qe0yp .board-toolbar.dashboard-open:where(.svelte-16qe0yp) .view-control:where(.svelte-16qe0yp),\n.main.svelte-16qe0yp .board-toolbar.dashboard-open:where(.svelte-16qe0yp) .filter-bar-container:where(.svelte-16qe0yp),\n.main.svelte-16qe0yp .board-toolbar.dashboard-open:where(.svelte-16qe0yp) .settings-control:where(.svelte-16qe0yp) {opacity:0.5;}.main.svelte-16qe0yp .board-toolbar:where(.svelte-16qe0yp) {position:relative;z-index:120;display:flex;align-items:center;justify-content:center;gap:var(--size-2-2);width:100%;max-width:min(1120px, 100% - var(--size-4-8));margin:0 auto var(--size-4-2) auto;line-height:1;}.main.svelte-16qe0yp .filter-bar-container:where(.svelte-16qe0yp) {position:relative;z-index:100;flex:1 1 auto;min-width:0;width:auto;max-width:none;margin:0;}.main.svelte-16qe0yp .view-control:where(.svelte-16qe0yp),\n.main.svelte-16qe0yp .settings-control:where(.svelte-16qe0yp) {position:relative;display:flex;align-items:center;justify-content:center;flex:0 0 auto;height:var(--view-toolbar-control-height);box-sizing:border-box;}.main.svelte-16qe0yp .settings-control:where(.svelte-16qe0yp) .clickable-icon {display:inline-flex;align-items:center;justify-content:center;width:var(--view-toolbar-control-height);height:var(--view-toolbar-control-height);box-sizing:border-box;margin:0;border-radius:999px;}.main.svelte-16qe0yp .view-editor-toggle:where(.svelte-16qe0yp) {display:inline-flex;align-items:center;justify-content:center;gap:var(--size-2-2);height:var(--view-toolbar-control-height);min-height:0;box-sizing:border-box;margin:0;padding:0 var(--size-4-3);border:var(--input-border-width, 1px) solid var(--background-modifier-border);border-radius:999px;background:var(--background-primary);box-shadow:var(--shadow-s);color:var(--text-normal);font-size:var(--font-ui-small);font-weight:600;line-height:1;cursor:pointer;}.main.svelte-16qe0yp .view-editor-toggle:where(.svelte-16qe0yp):hover {background:var(--background-modifier-hover);}.main.svelte-16qe0yp .view-editor-toggle.active:where(.svelte-16qe0yp) {background:var(--background-primary);border-color:color-mix(in srgb, var(--interactive-accent) 24%, transparent);box-shadow:0 0 0 2px color-mix(in srgb, var(--interactive-accent) 18%, transparent);}.main.svelte-16qe0yp .view-editor-toggle:where(.svelte-16qe0yp) .view-editor-chevron:where(.svelte-16qe0yp) {display:inline-flex;align-items:center;color:var(--text-muted);}.main.svelte-16qe0yp .view-editor-popover:where(.svelte-16qe0yp) {position:absolute;top:calc(100% + var(--view-editor-popover-gap));left:0;z-index:130;width:max-content;max-width:calc(100vw - var(--size-4-8));max-height:min(680px, 100vh - 120px);overflow:auto;}.main.svelte-16qe0yp .filter-bar:where(.svelte-16qe0yp) {display:flex;align-items:center;gap:var(--size-2-3);height:var(--view-toolbar-control-height);min-height:0;box-sizing:border-box;padding:0 var(--size-2-3) 0 var(--size-4-3);background:var(--background-primary);border:var(--input-border-width, 1px) solid var(--background-modifier-border);border-radius:999px;box-shadow:var(--shadow-s);}.main.svelte-16qe0yp .filter-bar:where(.svelte-16qe0yp):focus-within {box-shadow:0 0 0 2px var(--background-modifier-border-focus);}.main.svelte-16qe0yp .filter-bar:where(.svelte-16qe0yp) input.filter-bar-input:where(.svelte-16qe0yp) {flex:1 1 auto;min-width:0;height:100%;background:transparent;border:none;box-shadow:none;margin:0;padding:0;font-size:var(--font-ui-medium);line-height:1;}.main.svelte-16qe0yp .filter-bar:where(.svelte-16qe0yp) input.filter-bar-input:where(.svelte-16qe0yp):focus, .main.svelte-16qe0yp .filter-bar:where(.svelte-16qe0yp) input.filter-bar-input:where(.svelte-16qe0yp):focus-visible {border:none;box-shadow:none;outline:none;}.main.svelte-16qe0yp .filter-bar:where(.svelte-16qe0yp) .filter-bar-clear:where(.svelte-16qe0yp),\n.main.svelte-16qe0yp .filter-bar:where(.svelte-16qe0yp) .filter-bar-expand:where(.svelte-16qe0yp) {display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;width:30px;height:30px;margin:0;padding:0;background:transparent;border:none;box-shadow:none;cursor:pointer;color:var(--text-muted);font-size:18px;line-height:1;}.main.svelte-16qe0yp .filter-bar:where(.svelte-16qe0yp) .filter-bar-clear:where(.svelte-16qe0yp):hover,\n.main.svelte-16qe0yp .filter-bar:where(.svelte-16qe0yp) .filter-bar-expand:where(.svelte-16qe0yp):hover {color:var(--text-normal);}.main.svelte-16qe0yp .filter-bar:where(.svelte-16qe0yp) .filter-bar-expand:where(.svelte-16qe0yp) {border-radius:999px;}.main.svelte-16qe0yp .filter-bar:where(.svelte-16qe0yp) .filter-bar-expand:where(.svelte-16qe0yp):hover {background:var(--background-modifier-hover);}.main.svelte-16qe0yp .board-content:where(.svelte-16qe0yp) {--view-editor-popover-gap: 8px;display:flex;flex-direction:row;height:100%;overflow:visible;background:color-mix(in srgb, var(--background-primary) 92%, var(--background-secondary));}.main.svelte-16qe0yp .board-content.rail-top:where(.svelte-16qe0yp) {flex-direction:column;}.main.svelte-16qe0yp .board-body:where(.svelte-16qe0yp) {position:relative;display:flex;flex-direction:column;flex:1 1 0;min-width:0;min-height:0;overflow:visible;padding:var(--size-4-2) var(--size-4-4) 0 var(--size-4-4);}\n@media (max-width: 760px) {.main.svelte-16qe0yp .board-body:where(.svelte-16qe0yp) {padding-right:var(--size-4-2);padding-left:var(--size-4-2);}.main.svelte-16qe0yp .board-toolbar:where(.svelte-16qe0yp) {flex-wrap:wrap;justify-content:flex-start;}.main.svelte-16qe0yp .filter-bar-container:where(.svelte-16qe0yp) {flex-basis:100%;width:100%;max-width:100%;}.main.svelte-16qe0yp .settings-control:where(.svelte-16qe0yp) {margin-left:auto;}.main.svelte-16qe0yp .view-editor-popover:where(.svelte-16qe0yp) {width:calc(100vw - var(--size-4-8));}.main.svelte-16qe0yp .columns:where(.svelte-16qe0yp) {scroll-snap-type:x proximity;scroll-padding-inline:var(--size-4-2);overscroll-behavior-inline:contain;}\n}.main.svelte-16qe0yp .board-main:where(.svelte-16qe0yp) {position:relative;display:flex;flex-direction:column;flex:1 1 0;min-width:0;min-height:0;}.main.svelte-16qe0yp .columns:where(.svelte-16qe0yp) {flex:1 1 0;width:100%;min-width:0;min-height:0;max-width:100%;box-sizing:border-box;overflow-x:scroll;overflow-y:auto;padding-bottom:var(--size-4-4);}.main.svelte-16qe0yp .columns.vertical-flow:where(.svelte-16qe0yp) {overflow-x:auto;overflow-y:scroll;}"
+  code: ".main.svelte-16qe0yp {--view-toolbar-control-height: 42px;height:100%;display:flex;flex-direction:column;font-size:var(--font-ui-small, 13px);}.main.svelte-16qe0yp .board-toolbar.dashboard-open:where(.svelte-16qe0yp) .view-control:where(.svelte-16qe0yp),\n.main.svelte-16qe0yp .board-toolbar.dashboard-open:where(.svelte-16qe0yp) .filter-bar-container:where(.svelte-16qe0yp),\n.main.svelte-16qe0yp .board-toolbar.dashboard-open:where(.svelte-16qe0yp) .settings-control:where(.svelte-16qe0yp) {opacity:0.5;}.main.svelte-16qe0yp .board-toolbar:where(.svelte-16qe0yp) {position:relative;z-index:120;display:flex;align-items:center;justify-content:center;gap:var(--size-2-2);width:100%;max-width:min(1120px, 100% - var(--size-4-8));margin:0 auto var(--size-4-2) auto;line-height:1;}.main.svelte-16qe0yp .filter-bar-container:where(.svelte-16qe0yp) {position:relative;z-index:100;flex:1 1 auto;min-width:0;width:auto;max-width:none;margin:0;}.main.svelte-16qe0yp .view-control:where(.svelte-16qe0yp),\n.main.svelte-16qe0yp .settings-control:where(.svelte-16qe0yp) {position:relative;display:flex;align-items:center;justify-content:center;flex:0 0 auto;height:var(--view-toolbar-control-height);box-sizing:border-box;}.main.svelte-16qe0yp .settings-control:where(.svelte-16qe0yp) .clickable-icon {display:inline-flex;align-items:center;justify-content:center;width:var(--view-toolbar-control-height);height:var(--view-toolbar-control-height);box-sizing:border-box;margin:0;border-radius:999px;}.main.svelte-16qe0yp .view-editor-toggle:where(.svelte-16qe0yp) {display:inline-flex;align-items:center;justify-content:center;gap:var(--size-2-2);height:var(--view-toolbar-control-height);min-height:0;box-sizing:border-box;margin:0;padding:0 var(--size-4-3);border:var(--input-border-width, 1px) solid var(--background-modifier-border);border-radius:999px;background:var(--background-primary);box-shadow:var(--shadow-s);color:var(--text-normal);font-size:var(--font-ui-small);font-weight:600;line-height:1;cursor:pointer;}.main.svelte-16qe0yp .view-editor-toggle:where(.svelte-16qe0yp):hover {background:var(--background-modifier-hover);}.main.svelte-16qe0yp .view-editor-toggle.active:where(.svelte-16qe0yp) {background:var(--background-primary);border-color:color-mix(in srgb, var(--interactive-accent) 24%, transparent);box-shadow:0 0 0 2px color-mix(in srgb, var(--interactive-accent) 18%, transparent);}.main.svelte-16qe0yp .view-editor-toggle:where(.svelte-16qe0yp) .view-editor-chevron:where(.svelte-16qe0yp) {display:inline-flex;align-items:center;color:var(--text-muted);}.main.svelte-16qe0yp .view-editor-popover:where(.svelte-16qe0yp) {position:absolute;top:calc(100% + var(--view-editor-popover-gap));left:0;z-index:130;width:max-content;max-width:calc(100vw - var(--size-4-8));max-height:min(680px, 100vh - 120px);overflow:auto;}.main.svelte-16qe0yp .filter-bar:where(.svelte-16qe0yp) {display:flex;align-items:center;gap:var(--size-2-3);height:var(--view-toolbar-control-height);min-height:0;box-sizing:border-box;padding:0 var(--size-2-3) 0 var(--size-4-3);background:var(--background-primary);border:var(--input-border-width, 1px) solid var(--background-modifier-border);border-radius:999px;box-shadow:var(--shadow-s);}.main.svelte-16qe0yp .filter-bar:where(.svelte-16qe0yp):focus-within {box-shadow:0 0 0 2px var(--background-modifier-border-focus);}.main.svelte-16qe0yp .filter-bar:where(.svelte-16qe0yp) input.filter-bar-input:where(.svelte-16qe0yp) {flex:1 1 auto;min-width:0;height:100%;background:transparent;border:none;box-shadow:none;margin:0;padding:0;font-size:var(--font-ui-medium);line-height:1;}.main.svelte-16qe0yp .filter-bar:where(.svelte-16qe0yp) input.filter-bar-input:where(.svelte-16qe0yp):focus, .main.svelte-16qe0yp .filter-bar:where(.svelte-16qe0yp) input.filter-bar-input:where(.svelte-16qe0yp):focus-visible {border:none;box-shadow:none;outline:none;}.main.svelte-16qe0yp .filter-bar:where(.svelte-16qe0yp) .filter-bar-clear:where(.svelte-16qe0yp),\n.main.svelte-16qe0yp .filter-bar:where(.svelte-16qe0yp) .filter-bar-expand:where(.svelte-16qe0yp) {display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;width:30px;height:30px;margin:0;padding:0;background:transparent;border:none;box-shadow:none;cursor:pointer;color:var(--text-muted);font-size:18px;line-height:1;}.main.svelte-16qe0yp .filter-bar:where(.svelte-16qe0yp) .filter-bar-clear:where(.svelte-16qe0yp):hover,\n.main.svelte-16qe0yp .filter-bar:where(.svelte-16qe0yp) .filter-bar-expand:where(.svelte-16qe0yp):hover {color:var(--text-normal);}.main.svelte-16qe0yp .filter-bar:where(.svelte-16qe0yp) .filter-bar-expand:where(.svelte-16qe0yp) {border-radius:999px;}.main.svelte-16qe0yp .filter-bar:where(.svelte-16qe0yp) .filter-bar-expand:where(.svelte-16qe0yp):hover {background:var(--background-modifier-hover);}.main.svelte-16qe0yp .board-content:where(.svelte-16qe0yp) {--view-editor-popover-gap: 8px;display:flex;flex-direction:row;height:100%;overflow:visible;background:color-mix(in srgb, var(--background-primary) 92%, var(--background-secondary));}.main.svelte-16qe0yp .board-content.rail-top:where(.svelte-16qe0yp) {flex-direction:column;}.main.svelte-16qe0yp .board-body:where(.svelte-16qe0yp) {position:relative;display:flex;flex-direction:column;flex:1 1 0;min-width:0;min-height:0;overflow:visible;padding:var(--size-4-2) var(--size-4-4) 0 var(--size-4-4);}\n@media (max-width: 760px) {.main.svelte-16qe0yp .board-body:where(.svelte-16qe0yp) {padding-right:var(--size-4-2);padding-left:var(--size-4-2);}.main.svelte-16qe0yp .board-toolbar:where(.svelte-16qe0yp) {flex-wrap:wrap;justify-content:flex-start;}.main.svelte-16qe0yp .filter-bar-container:where(.svelte-16qe0yp) {flex-basis:100%;width:100%;max-width:100%;}.main.svelte-16qe0yp .settings-control:where(.svelte-16qe0yp) {margin-left:auto;}.main.svelte-16qe0yp .view-editor-popover:where(.svelte-16qe0yp) {width:calc(100vw - var(--size-4-8));}.main.svelte-16qe0yp .columns:where(.svelte-16qe0yp) {scroll-snap-type:x proximity;scroll-padding-inline:var(--size-4-2);overscroll-behavior-inline:contain;}\n}.main.svelte-16qe0yp .board-main:where(.svelte-16qe0yp) {position:relative;display:flex;flex-direction:column;flex:1 1 0;min-width:0;min-height:0;}.main.svelte-16qe0yp .columns:where(.svelte-16qe0yp) {flex:1 1 0;width:100%;min-width:0;min-height:0;max-width:100%;box-sizing:border-box;overflow-x:scroll;overflow-y:auto;padding-bottom:var(--size-4-4);}.main.svelte-16qe0yp .columns.vertical-flow:where(.svelte-16qe0yp) {overflow-x:auto;overflow-y:scroll;}"
 };
 function Main($$anchor, $$props) {
   if (new.target) return createClassComponent({ component: Main, ...$$anchor });
@@ -27690,6 +27789,158 @@ function validHexColor(color) {
   const trimmed = color == null ? void 0 : color.trim();
   return trimmed && HEX_COLOR_PATTERN.test(trimmed) ? trimmed : null;
 }
+var JDC_UNIVERSAL_AGENTS_CODEX_TEMPLATE = `---
+tipo: norma_operativa
+estado: vigente
+ia_orquestadora: Codex
+modelo_orquestador: CEO-Codex
+version_plantilla: 1.0_universal
+---
+
+# AGENTS.md — Norma Operativa Universal (Orquestación CEO / Dubby con Codex)
+
+Este archivo es la norma canónica y de máxima jerarquía que rige sobre cualquier historial, notas anteriores o suposiciones en el espacio de trabajo. Si surge cualquier discrepancia o contradicción, prevalece estrictamente lo aquí estipulado.
+
+---
+
+## 1. Principios y Prioridades Absolutas
+
+- **Liderazgo Operativo (CEO-Codex)**: La instancia principal de Codex que atiende al usuario actúa como **CEO**. CEO no habla de sí mismo en tercera persona como una entidad ajena o futura, ni deja acciones pendientes afirmando que "el CEO debe encargarse". CEO asume el liderazgo y la toma de decisiones en el turno actual.
+- **Validación por Evidencia Empírica**: Ninguna tarea se considera completada por meras afirmaciones textuales en el chat. La validez técnica solo se reconoce mediante evidencia fehaciente en archivos guardados, comandos ejecutados con éxito, comprobaciones de sintaxis, pruebas funcionales y hashes o salidas verificables.
+- **Protección del Espacio de Trabajo**: Prohibido alterar configuraciones críticas, entornos de producción, dependencias globales, borrados masivos o repositorios Git sin autorización explícita del usuario y comprobaciones previas.
+- **Anti-Alucinación e Integridad**: Queda terminantemente prohibido inventar resultados, falsificar estados de tareas, ocultar errores o simular validaciones. Si surge un error, se aísla, diagnostica y corrige; nunca se oculta ni se usa como pretexto para cerrar tareas falsamente.
+
+---
+
+## 2. Gestión de Tareas Kanban (LISTA DE TAREAS JDC)
+
+El archivo canónico de gestión del proyecto es \`LISTA DE TAREAS.md\` (o el tablero Kanban activo configurado en el plugin \`LISTA DE TAREAS JDC\`).
+
+### Columnas Oficiales
+1. \`PENDIENTES\`: Tareas redactadas, estructuradas y listas para su ejecución o asignación.
+2. \`PARA AUDITAR\`: Tareas donde el agente ejecutor (Dubby) ha completado el trabajo técnico y aportado las evidencias correspondientes.
+3. \`NO FUNCIONA DESCARTADO\`: Enfoques o pruebas que tras ser implementados y evaluados han resultado inviables o fallidos (debidamente documentados con su causa técnica).
+4. \`COMPLETADO Y VALIDADO\`: Tareas formalmente auditadas por CEO con evidencia técnica irrefutable de su correcto funcionamiento.
+
+### Identificadores y Jerarquía de Tarjetas (\`T-###\`)
+- Cada tarea principal de primer nivel se identifica con el formato \`T-###\` secuencial (ej., \`T-001\`, \`T-002\`, \`T-003\`).
+- **Exclusividad de CEO**: Únicamente **CEO** tiene autoridad para crear, nombrar, priorizar y estructurar tareas principales \`T-###\`. Un agente ejecutor (Dubby) **nunca** crea tareas principales ni altera su identificador.
+- **Etiquetas de Prioridad Obligatorias**:
+  - \`#PRIORIDAD_MAXIMA\`
+  - \`#PRIORIDAD_ALTA\`
+  - \`#PRIORIDAD_NORMAL\`
+
+### Estructura Estándar de una Tarjeta de Tarea
+\`\`\`markdown
+- [ ] T-001 Implementar módulo principal del proyecto #PRIORIDAD_ALTA
+    - Responsable: Dubby_1 (o CEO)
+    - Alcance: Rutas y archivos concretos autorizados para modificar.
+    - Criterio de Cierre: Qué condición técnica medible determina el éxito.
+    - Evidencia Esperada: Comandos, tests, capturas o hashes requeridos.
+    - Subtareas:
+        - [ ] Paso 1: Diagnóstico y preparación.
+        - [ ] Paso 2: Desarrollo o refactorización.
+        - [ ] Paso 3: Verificación técnica y pruebas.
+    - Bloqueos: Ninguno (o descripción precisa si existe).
+\`\`\`
+
+---
+
+## 3. Dinámica de Trabajo CEO y Agentes Dubby
+
+Los **Dubby** son agentes ejecutores autónomos asignados por CEO para desarrollar una tarea técnica concreta de principio a fin.
+
+### 3.1 Asignación y Protocolo \`/objetivo\`
+Todo encargo, reactivación, corrección técnica o reasignación hacia un Dubby debe iniciarse obligatoriamente con la línea literal:
+
+\`\`\`text
+/objetivo
+\`\`\`
+
+A continuación, el mensaje debe detallar:
+1. Identificador de la tarea (\`T-###\`) y ruta del archivo de tareas (\`LISTA DE TAREAS.md\`).
+2. Objetivo claro y resultado técnico exacto solicitado.
+3. Archivos y carpetas autorizados (límite de alcance).
+4. Subtareas requeridas y evidencias solicitadas para la entrega.
+5. Pautas para el reporte de avances y manejo de bloqueos técnicos.
+
+*Cualquier instrucción hacia un Dubby que no empiece con \`/objetivo\` se considerará nula y deberá reenviarse con la cabecera \`/objetivo\`.*
+
+### 3.2 Compuerta de Rol (Role Gate) de CEO
+Antes de interactuar con el entorno, el CEO debe clasificar la acción que va a emprender:
+- **Permitido para CEO**:
+  - Coordinar y definir arquitectura del proyecto.
+  - Crear, clasificar y priorizar tareas \`T-###\`.
+  - Auditar entregas técnicas en \`PARA AUDITAR\`.
+  - Reactivar o guiar a los Dubbys mediante \`/objetivo\`.
+- **Prohibido para CEO (salvo orden expresa del usuario)**:
+  - Ejecutar el trabajo técnico manual de una tarjeta ya asignada a un Dubby.
+  - Editar archivos asignados a un Dubby mientras la tarea esté en curso.
+- Si un Dubby solicita que CEO realice su trabajo, CEO se negará y le proporcionará orientación, contexto, comandos o correcciones para que el Dubby lo resuelva.
+
+### 3.3 Ciclo de Vida de la Tarea y Auditoría
+1. **Ejecución**: El Dubby trabaja en su tarea asignada, marcando subtareas (\`- [x]\`) y compilando evidencia en la tarjeta.
+2. **Petición de Auditoría**: Al finalizar, el Dubby mueve la tarjeta a \`PARA AUDITAR\` y remite su informe a CEO. **El Dubby jamás mueve una tarjeta a \`COMPLETADO Y VALIDADO\`**.
+3. **Revisión por CEO**:
+   - Si la auditoría **aprueba**: CEO traslada la tarjeta a \`COMPLETADO Y VALIDADO\` y documenta el éxito.
+   - Si la auditoría **detecta deficiencias**: CEO devuelve la tarjeta a \`PENDIENTES\`, especifica las correcciones requeridas y reactiva al mismo Dubby mediante \`/objetivo\`.
+4. **Persistencia de Asignación**: Un error de un agente no justifica relevarlo automáticamente. CEO diagnostica el problema, proporciona la solución o comando correcto y mantiene al mismo agente hasta agotar las vías técnicas o confirmar un bloqueo irrecuperable.
+
+---
+
+## 4. Estándares de Documentación y Jerarquía en Obsidian
+
+- **Segundo Cerebro**: Obsidian debe reflejar fielmente la arquitectura del proyecto. Toda carpeta relevante debe contener un archivo de notas que describa su contenido, función y relaciones.
+- **Sin Archivos Huérfanos**: Todos los documentos deben estar debidamente interconectados y clasificados con etiquetas coherentes.
+- **Separación de Pruebas y Núcleo**: Las pruebas experimentales o investigaciones en desarrollo deben mantenerse en carpetas separadas hasta ser validadas.
+
+---
+
+## 5. Criterios de Evidencia y Registro
+
+Toda entrega relevante debe registrar:
+- **Ruta de los archivos**: Creados o editados.
+- **Comandos ejecutados**: Sintaxis exacta y resultado/código de salida.
+- **Pruebas realizadas**: Tests automatizados, validaciones de tipos o pruebas de ejecución.
+- **Límites conocidos**: Alcance alcanzado y dependencias subsiguientes.
+
+---
+
+## 6. Integración con el Plugin LISTA DE TAREAS JDC
+
+- El plugin gestiona la persistencia visual de las tareas y subtareas en Obsidian.
+- Los agentes deben respetar la sintaxis de markdown utilizada por el plugin para evitar desconfiguraciones del tablero.
+- Las tareas completadas deben mantener intactas sus subtareas y notas de evidencia para auditorías posteriores.
+`;
+var JDCAgentsFolderPickerModal = class extends import_obsidian14.FuzzySuggestModal {
+  constructor(app, defaultFolderPath, onChooseFolder) {
+    super(app);
+    this.defaultFolderPath = defaultFolderPath || "";
+    this.onChooseFolder = onChooseFolder;
+    this.setPlaceholder(jdcTranslateExactTrimmed("Elige carpeta de destino para AGENTS.md", JDC_ACTIVE_LANGUAGE));
+    this.emptyStateText = jdcTranslateExactTrimmed("No se encontraron carpetas", JDC_ACTIVE_LANGUAGE);
+    this.limit = 50;
+  }
+  onOpen() {
+    super.onOpen();
+    this.inputEl.value = this.defaultFolderPath;
+    this.inputEl.select();
+    this.inputEl.dispatchEvent(new Event("input"));
+  }
+  getItems() {
+    const folders = this.app.vault.getAllLoadedFiles().filter((file) => file instanceof import_obsidian14.TFolder);
+    if (!folders.some((folder) => folder.path === this.app.vault.getRoot().path)) {
+      folders.push(this.app.vault.getRoot());
+    }
+    return folders.sort((a, b) => this.getItemText(a).localeCompare(this.getItemText(b)));
+  }
+  getItemText(folder) {
+    return folder.path || jdcTranslateExactTrimmed("Raíz de la bóveda", JDC_ACTIVE_LANGUAGE);
+  }
+  onChooseItem(folder) {
+    this.onChooseFolder(folder);
+  }
+};
 var SettingsModal = class extends import_obsidian14.Modal {
   constructor(app, settings, onSubmit, boardFolderPath, options = {}) {
     var _a5, _b3;
@@ -28759,6 +29010,11 @@ var SettingsModal = class extends import_obsidian14.Modal {
         "ignoredStatusMarkers"
       ]
     );
+    const agentsSection = createSection(
+      "generate-agents",
+      "Generate AGENTS.md",
+      "Operational rules and universal AGENTS.md template generator for AI agents."
+    );
     this.columnsEditorEl = columnsSection;
     this.renderColumnsEditor();
     this.validateColumns();
@@ -28767,6 +29023,7 @@ var SettingsModal = class extends import_obsidian14.Modal {
     this.renderScopeSection(scopeSection);
     this.renderDisplaySection(displaySection);
     this.renderStatusMarkersSection(statusMarkersSection);
+    this.renderAgentsSection(agentsSection);
     if (!this.isEmbedded()) {
       this.renderButtonBar();
     }
@@ -29102,6 +29359,185 @@ var SettingsModal = class extends import_obsidian14.Modal {
       }
     });
   }
+  renderAgentsSection(container) {
+    let targetFolderPath = this.boardFolderPath || "";
+    let folderInputEl = null;
+
+    const folderSetting = new import_obsidian14.Setting(container)
+      .setName("Carpeta de destino / Target folder")
+      .setDesc("Ruta en tu ordenador o en la bóveda donde se generará el archivo AGENTS.md (puedes escribir o seleccionar cualquier ruta absoluta ej. C:\\... o relativa).");
+
+    folderSetting.addText((text) => {
+      folderInputEl = text.inputEl;
+      text.setPlaceholder("ej. C:\\Ruta\\Proyecto o carpeta/subcarpeta")
+        .setValue(targetFolderPath)
+        .onChange((value) => {
+          targetFolderPath = value.trim();
+        });
+      text.inputEl.style.width = "320px";
+    });
+
+    // Selector nativo de Windows (100% fiable, permite carpetas vacías y botón Nueva Carpeta)
+    folderSetting.addButton((button) => {
+      button.setButtonText("Examinar PC...")
+        .setTooltip("Elegir cualquier carpeta de tu ordenador")
+        .onClick(() => {
+          try {
+            const cp = require("child_process");
+            const psCmd = `Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = 'Selecciona la carpeta donde generar AGENTS.md'; $f.ShowNewFolderButton = $true; if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Write-Host $f.SelectedPath }`;
+            cp.exec(`powershell -NoProfile -Command "${psCmd}"`, { encoding: "utf8" }, (err, stdout) => {
+              if (!err && stdout) {
+                const chosen = stdout.trim();
+                if (chosen) {
+                  targetFolderPath = chosen;
+                  if (folderInputEl) {
+                    folderInputEl.value = chosen;
+                  }
+                  new import_obsidian14.Notice(`Carpeta seleccionada: ${chosen}`);
+                  return;
+                }
+              }
+            });
+            return;
+          } catch (e) {
+            console.error("Error lanzando PowerShell picker:", e);
+          }
+
+          // Fallback navegador
+          const fileInput = document.createElement("input");
+          fileInput.type = "file";
+          fileInput.webkitdirectory = true;
+          fileInput.style.display = "none";
+          document.body.appendChild(fileInput);
+          fileInput.addEventListener("change", () => {
+            if (fileInput.files && fileInput.files.length > 0) {
+              const fileObj = fileInput.files[0];
+              const pathModule = require("path");
+              const dirPath = fileObj.path ? pathModule.dirname(fileObj.path) : "";
+              if (dirPath) {
+                targetFolderPath = dirPath;
+                if (folderInputEl) {
+                  folderInputEl.value = dirPath;
+                }
+                new import_obsidian14.Notice(`Carpeta seleccionada: ${dirPath}`);
+              }
+            }
+            fileInput.remove();
+          });
+          fileInput.click();
+        });
+    });
+
+    folderSetting.addButton((button) => {
+      button.setButtonText("Examinar Bóveda...")
+        .setTooltip("Elegir carpeta dentro de la bóveda de Obsidian")
+        .onClick(() => {
+          new JDCAgentsFolderPickerModal(this.app, targetFolderPath, (folder) => {
+            const selectedPath = (folder && folder.path && folder.path !== "/") ? folder.path : "";
+            targetFolderPath = selectedPath;
+            if (folderInputEl) {
+              folderInputEl.value = selectedPath;
+            }
+          }).open();
+        });
+    });
+
+    const executeGenerate = async (chosenFolder) => {
+      const rawFolder = (typeof chosenFolder === "string" && chosenFolder.trim() !== "" ? chosenFolder : (folderInputEl ? folderInputEl.value : targetFolderPath)).trim();
+      if (!rawFolder) {
+        new import_obsidian14.Notice("Por favor introduce o selecciona una carpeta de destino.");
+        return;
+      }
+      const fs = require("fs");
+      const path = require("path");
+      const isAbsolute = path.isAbsolute(rawFolder) || /^[A-Za-z]:[\\/]/.test(rawFolder) || rawFolder.startsWith("\\\\");
+
+      if (isAbsolute) {
+        const targetFilePath = path.join(rawFolder, "AGENTS.md");
+        const doCreateDisk = () => {
+          try {
+            fs.mkdirSync(rawFolder, { recursive: true });
+            fs.writeFileSync(targetFilePath, JDC_UNIVERSAL_AGENTS_CODEX_TEMPLATE, "utf8");
+            new import_obsidian14.Notice(
+              `AGENTS.md universal de Codex generado con éxito en "${targetFilePath}".`
+            );
+          } catch (err) {
+            console.error("Error al generar en disco:", err);
+            new import_obsidian14.Notice(
+              `Error al generar AGENTS.md en disco: ${err && err.message ? err.message : String(err)}`
+            );
+          }
+        };
+
+        if (fs.existsSync(targetFilePath)) {
+          new ConfirmModal(this.app, {
+            title: "Sobrescribir AGENTS.md?",
+            body: `Ya existe un archivo en "${targetFilePath}". ¿Deseas sobrescribirlo con la plantilla universal de Codex?`,
+            confirmText: "Sobrescribir",
+            onConfirm: () => {
+              doCreateDisk();
+            }
+          }).open();
+        } else {
+          doCreateDisk();
+        }
+        return;
+      }
+
+      const cleanFolder = rawFolder.replace(/^\/+/, "").replace(/\/+$/, "");
+      const targetFilePath = import_obsidian14.normalizePath(cleanFolder ? `${cleanFolder}/AGENTS.md` : "AGENTS.md");
+      const existingFile = this.app.vault.getAbstractFileByPath(targetFilePath);
+
+      const doCreate = async () => {
+        try {
+          if (cleanFolder) {
+            const folderObj = this.app.vault.getAbstractFileByPath(cleanFolder);
+            if (!folderObj) {
+              await this.app.vault.createFolder(cleanFolder);
+            }
+          }
+          if (existingFile instanceof import_obsidian14.TFile) {
+            await this.app.vault.modify(existingFile, JDC_UNIVERSAL_AGENTS_CODEX_TEMPLATE);
+          } else {
+            await this.app.vault.create(targetFilePath, JDC_UNIVERSAL_AGENTS_CODEX_TEMPLATE);
+          }
+          new import_obsidian14.Notice(
+            jdcTranslateExactTrimmed(`AGENTS.md universal de Codex generado con éxito en "${targetFilePath}".`, JDC_ACTIVE_LANGUAGE)
+          );
+        } catch (error) {
+          console.error("Error al generar AGENTS.md de Codex:", error);
+          new import_obsidian14.Notice(
+            jdcTranslateExactTrimmed(`Error al generar AGENTS.md: ${error && error.message ? error.message : String(error)}`, JDC_ACTIVE_LANGUAGE)
+          );
+        }
+      };
+
+      if (existingFile instanceof import_obsidian14.TFile) {
+        new ConfirmModal(this.app, {
+          title: "Overwrite AGENTS.md?",
+          body: `A file already exists at "${targetFilePath}". Do you want to overwrite it with the universal Codex template?`,
+          confirmText: "Overwrite",
+          onConfirm: () => {
+            void doCreate();
+          }
+        }).open();
+      } else {
+        void doCreate();
+      }
+    };
+
+    new import_obsidian14.Setting(container)
+      .setName("Generate AGENTS.md for Codex")
+      .setDesc("Genera las normas operativas universales (jerarquía CEO/Dubby, role gate, comando /objetivo, tareas T-### y auditoría empírica) para Codex en el directorio seleccionado.")
+      .addButton((button) => {
+        button.setButtonText("Generar AGENTS.md de Codex")
+          .setCta()
+          .onClick(() => {
+            const folderToUse = folderInputEl ? folderInputEl.value.trim() : targetFolderPath;
+            void executeGenerate(folderToUse);
+          });
+      });
+  }
   renderButtonBar() {
     const buttonBar = this.contentEl.createDiv({ cls: "settings-button-bar" });
     const cancelBtn = buttonBar.createEl("button", { text: "Cancel" });
@@ -29289,8 +29725,7 @@ function buildSourceTree({
   const stack2 = [];
   for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
     const rawLine = (_a5 = rows[rowIndex]) != null ? _a5 : "";
-    if (rawLine === "") {
-      stack2.length = 0;
+    if (rawLine.trim() === "") {
       continue;
     }
     const node = createSourceNode({
@@ -34880,6 +35315,17 @@ var JDC_TEXT_PAIRS = [
   ["Choose where the board looks for tasks, then subtract paths it should ignore.", "Elige dónde busca tareas la lista y después resta las rutas que debe ignorar."],
   ["Card metadata, filepath, and tag display behavior.", "Metadatos de tarjetas, ruta de archivo y comportamiento de visualización de etiquetas."],
   ["Task status markers and status-specific board behavior.", "Marcadores de estado de tareas y comportamiento de lista específico por estado."],
+  ["Generate AGENTS.md", "Generar Agents.md"],
+  ["Operational rules and universal AGENTS.md template generator for AI agents.", "Normas operativas y generador de AGENTS.md universal para agentes de IA."],
+  ["Generate AGENTS.md for Codex", "Generar AGENTS.md de Codex"],
+  ["Target folder", "Carpeta de destino"],
+  ["Destination folder in the vault where the AGENTS.md file will be generated (leave empty for vault root).", "Carpeta de destino en la bóveda donde se generará el archivo AGENTS.md (déjalo vacío para la raíz de la bóveda)."],
+  ["Browse...", "Examinar..."],
+  ["Choose destination folder from vault", "Elegir carpeta de destino de la bóveda"],
+  ["e.g., / or folder/subfolder", "ej., / o carpeta/subcarpeta"],
+  ["Generate universal operational rules (CEO/Dubby hierarchy, role gate, /objetivo command, T-### tasks, and empirical audit) for Codex in the selected directory.", "Genera las normas operativas universales (jerarquía CEO/Dubby, compuerta de rol, comando /objetivo, tareas T-### y auditoría empírica) para Codex en el directorio seleccionado."],
+  ["Overwrite AGENTS.md?", "¿Sobrescribir AGENTS.md?"],
+  ["Overwrite", "Sobrescribir"],
   ["Inherited", "Heredado"],
   ["This board overrides the default. Click to reset to the inherited value.", "Esta lista sobrescribe el valor por defecto. Haz clic para restablecer el valor heredado."],
   ["Following the default. Click to pin the current value to this board.", "Usa el valor por defecto. Haz clic para fijar el valor actual en esta lista."],
@@ -36428,6 +36874,10 @@ var Base = class extends import_obsidian23.Plugin {
   async onload() {
     this.globalSettingsStore.set(parseGlobalSettings(await this.loadData()));
     installJdcTranslator(this);
+    try {
+      const savedFsize = localStorage.getItem("jdc-task-font-size") || "13";
+      document.documentElement.style.setProperty("--jdc-task-font-size", `${savedFsize}px`);
+    } catch (e) {}
     const boardIndex = createBoardIndex(this.app, this.registerEvent.bind(this));
     this.boardIndex = boardIndex;
     const boardStats = createBoardStatsService({
